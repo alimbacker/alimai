@@ -2,52 +2,70 @@ import { Router } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { v4 as uuidv4 } from "uuid";
-import db from "../db.js";
+import { get, run } from "../db.js";
 
 const router = Router();
 
+function requireJwtSecret() {
+  if (!process.env.JWT_SECRET) {
+    throw new Error("JWT_SECRET is not set — add it to your environment variables.");
+  }
+  return process.env.JWT_SECRET;
+}
+
 router.post("/register", async (req, res) => {
-  const { name, email, password } = req.body;
-  if (!name || !email || !password) {
-    return res.status(400).json({ error: "name, email, and password are required" });
-  }
-  if (password.length < 8) {
-    return res.status(400).json({ error: "Password must be at least 8 characters" });
-  }
+  try {
+    const { name, email, password } = req.body ?? {};
+    if (!name || !email || !password) {
+      return res.status(400).json({ error: "name, email, and password are required" });
+    }
+    if (password.length < 8) {
+      return res.status(400).json({ error: "Password must be at least 8 characters" });
+    }
 
-  const existing = db.prepare("SELECT id FROM users WHERE email = ?").get(email);
-  if (existing) {
-    return res.status(409).json({ error: "An account with that email already exists" });
+    const existing = await get("SELECT id FROM users WHERE email = ?", [email]);
+    if (existing) {
+      return res.status(409).json({ error: "An account with that email already exists" });
+    }
+
+    const id = uuidv4();
+    const passwordHash = await bcrypt.hash(password, 10);
+    await run(
+      "INSERT INTO users (id, name, email, password_hash) VALUES (?, ?, ?, ?)",
+      [id, name, email, passwordHash]
+    );
+
+    const token = jwt.sign({ userId: id }, requireJwtSecret(), { expiresIn: "7d" });
+    res.json({ token, user: { id, name, email } });
+  } catch (err) {
+    console.error("register failed:", err);
+    res.status(500).json({ error: "Registration failed" });
   }
-
-  const id = uuidv4();
-  const passwordHash = await bcrypt.hash(password, 10);
-  db.prepare(
-    "INSERT INTO users (id, name, email, password_hash) VALUES (?, ?, ?, ?)"
-  ).run(id, name, email, passwordHash);
-
-  const token = jwt.sign({ userId: id }, process.env.JWT_SECRET, { expiresIn: "7d" });
-  res.json({ token, user: { id, name, email } });
 });
 
 router.post("/login", async (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password) {
-    return res.status(400).json({ error: "email and password are required" });
-  }
+  try {
+    const { email, password } = req.body ?? {};
+    if (!email || !password) {
+      return res.status(400).json({ error: "email and password are required" });
+    }
 
-  const user = db.prepare("SELECT * FROM users WHERE email = ?").get(email);
-  if (!user) {
-    return res.status(401).json({ error: "Invalid email or password" });
-  }
+    const user = await get("SELECT * FROM users WHERE email = ?", [email]);
+    if (!user) {
+      return res.status(401).json({ error: "Invalid email or password" });
+    }
 
-  const match = await bcrypt.compare(password, user.password_hash);
-  if (!match) {
-    return res.status(401).json({ error: "Invalid email or password" });
-  }
+    const match = await bcrypt.compare(password, user.password_hash);
+    if (!match) {
+      return res.status(401).json({ error: "Invalid email or password" });
+    }
 
-  const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: "7d" });
-  res.json({ token, user: { id: user.id, name: user.name, email: user.email } });
+    const token = jwt.sign({ userId: user.id }, requireJwtSecret(), { expiresIn: "7d" });
+    res.json({ token, user: { id: user.id, name: user.name, email: user.email } });
+  } catch (err) {
+    console.error("login failed:", err);
+    res.status(500).json({ error: "Login failed" });
+  }
 });
 
 export default router;

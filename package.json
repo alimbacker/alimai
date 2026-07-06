@@ -1,10 +1,11 @@
 {
-  "name": "alim-ai-backend",
+  "name": "alim-ai",
   "version": "1.0.0",
+  "private": true,
   "type": "module",
-  "scripts": {
-    "dev": "node --watch src/server.js",
-    "start": "node src/server.js"
+  "description": "Alim AI — multi-model chat. Root package holds the serverless API function's dependencies.",
+  "engines": {
+    "node": "22.x"
   },
   "dependencies": {
     "@libsql/client": "^0.15.15",

@@ -1,6 +1,7 @@
 import { getModelDefinition } from "./modelRegistry.js";
 import * as anthropic from "./providers/anthropic.js";
 import * as openai from "./providers/openai.js";
+import * as groq from "./providers/groq.js";
 
 // This is the ONE place that knows how to reach every provider.
 // Everything else in the app (routes, frontend) just says
@@ -8,6 +9,7 @@ import * as openai from "./providers/openai.js";
 const PROVIDER_ADAPTERS = {
   anthropic,
   openai,
+  groq,
 };
 
 export async function routeMessage(modelId, messages) {
@@ -19,7 +21,7 @@ export async function routeMessage(modelId, messages) {
   const apiKey = process.env[modelDef.envKey];
   if (!apiKey) {
     throw new Error(
-      `No API key configured for ${modelDef.label}. Add ${modelDef.envKey} to your .env file.`
+      `No API key configured for ${modelDef.label}. Add ${modelDef.envKey} to your environment.`
     );
   }
 

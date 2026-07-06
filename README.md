@@ -1,101 +1,106 @@
-# Alim AI (starter clone)
+# Alim AI
 
-A multi-model AI chat platform: React frontend, Node/Express backend, SQLite storage
-(via Node's built-in `node:sqlite` — no native compilation needed), JWT auth, and a
+A multi-model AI chat platform: React frontend, Node/Express backend, JWT auth, and a
 **model router** that lets you plug in multiple AI providers and switch between them
-per message.
+per message. Deployable to **Vercel** as a single project (static frontend + serverless API).
 
-## How it's built
+## Providers
+
+- **Groq** (default) — OpenAI-compatible, generous free tier. Powers the GPT-OSS models.
+- **Anthropic** — Claude models.
+- **OpenAI** — GPT models.
+
+Only models whose API key is configured appear in the model picker, so the dropdown
+never shows a dead option. Add a provider by adding one entry to
+`backend/src/services/modelRegistry.js` and one adapter file in
+`backend/src/services/providers/`.
+
+## Project layout
 
 ```
 alim-ai/
+├── api/
+│   └── index.js               # Vercel serverless entrypoint (exports the Express app)
+├── vercel.json                # Routes /api/* -> function, everything else -> SPA
+├── package.json               # Dependencies for the serverless API function
 ├── backend/
-│   ├── src/
-│   │   ├── server.js              # Express app entry
-│   │   ├── db.js                  # SQLite schema (users, conversations, messages)
-│   │   ├── middleware/auth.js     # JWT verification
-│   │   ├── routes/
-│   │   │   ├── auth.js            # /api/auth/register, /login
-│   │   │   ├── models.js          # /api/models — lists models with configured keys
-│   │   │   └── chat.js            # /api/chat/... — conversations + send message
-│   │   └── services/
-│   │       ├── modelRegistry.js   # every model the app knows about
-│   │       ├── modelRouter.js     # picks the right provider adapter and calls it
-│   │       └── providers/
-│   │           ├── anthropic.js   # Anthropic /v1/messages adapter
-│   │           └── openai.js      # OpenAI /v1/chat/completions adapter
-│   └── .env.example
-└── frontend/
-    └── src/
-        ├── pages/Login.jsx, Register.jsx, Chat.jsx
-        ├── components/ModelSelector.jsx, ChatMessage.jsx
-        └── api.js                 # fetch wrapper for the backend
+│   └── src/
+│       ├── server.js          # Express app (exported for serverless; listens only in local dev)
+│       ├── db.js              # libSQL / Turso storage (SQLite-compatible)
+│       ├── middleware/auth.js # JWT verification
+│       ├── routes/            # auth, models, chat
+│       └── services/          # modelRegistry, modelRouter, providers/{groq,anthropic,openai}
+└── frontend/                  # Vite + React app (built to frontend/dist)
 ```
 
-**The multi-model routing works like this:** `modelRegistry.js` lists every model
-(id, provider, display label, which env var holds its key). `/api/models` only returns
-models whose key is actually set, so the dropdown never shows a dead option.
-`modelRouter.js` is the single place that maps a model id to a provider adapter and
-calls it. To add a new provider (Google, Mistral, a local model, etc.), you only need
-to: add an entry to `modelRegistry.js` and write one adapter file with a
-`sendMessage(modelId, messages)` function — nothing else changes.
+## Environment variables
 
-## Setup
+| Variable             | Where            | Required?                    | Notes                                             |
+| -------------------- | ---------------- | ---------------------------- | ------------------------------------------------- |
+| `JWT_SECRET`         | local + Vercel   | **Yes**                      | Any long random string (`openssl rand -hex 32`).  |
+| `GROQ_API_KEY`       | local + Vercel   | At least one provider key    | Free at console.groq.com. Enables GPT-OSS models. |
+| `ANTHROPIC_API_KEY`  | local + Vercel   | optional                     | Enables Claude models.                            |
+| `OPENAI_API_KEY`     | local + Vercel   | optional                     | Enables GPT models.                               |
+| `TURSO_DATABASE_URL` | Vercel           | **Yes on Vercel**            | `libsql://...` from Turso. Local dev omits it.    |
+| `TURSO_AUTH_TOKEN`   | Vercel           | **Yes on Vercel**            | Turso auth token.                                 |
 
-### 1. Backend
+> On Vercel, leaving `TURSO_DATABASE_URL` unset fails fast with a clear message —
+> a file-based database can't work on a serverless filesystem.
+
+## Run locally
 
 ```bash
+# Backend (terminal 1)
 cd backend
 npm install
-cp .env.example .env
-```
+cp .env.example .env      # fill in JWT_SECRET and at least one provider key
+npm run dev               # http://localhost:4000 — creates a local alim.sqlite file
 
-Open `.env` and fill in:
-- `JWT_SECRET` — any long random string
-- `ANTHROPIC_API_KEY` and/or `OPENAI_API_KEY` — add at least one to get a working model
-
-Then run:
-
-```bash
-npm run dev
-```
-
-The API runs on `http://localhost:4000`. It creates `alim.sqlite` automatically on
-first run — no separate DB setup needed.
-
-> Requires **Node 22.5+** (uses the built-in `node:sqlite` module). Check with `node -v`.
-
-### 2. Frontend
-
-In a second terminal:
-
-```bash
+# Frontend (terminal 2)
 cd frontend
 npm install
-npm run dev
+npm run dev               # http://localhost:5173, proxies /api -> :4000
 ```
 
-Open the URL Vite prints (usually `http://localhost:5173`). It proxies `/api` requests
-to the backend automatically (see `vite.config.js`), so no CORS setup is needed in dev.
+Register → pick a model → send a message. History is saved to the DB and routed to
+the right provider.
 
-### 3. Try it
+## Deploy to Vercel
 
-1. Register an account
-2. Pick a model from the dropdown (only models with a configured API key appear)
-3. Send a message — it's saved to SQLite and routed to the right provider
+1. **Create a database (free):** install the [Turso CLI](https://docs.turso.tech/cli/installation), then:
+   ```bash
+   turso db create alim-ai
+   turso db show alim-ai --url        # -> TURSO_DATABASE_URL
+   turso db tokens create alim-ai     # -> TURSO_AUTH_TOKEN
+   ```
+2. **Import the repo into Vercel.** Leave the **Root Directory** as the repo root
+   (the included `vercel.json` handles building both the frontend and the API).
+   Don't override the build/output settings.
+3. **Add Environment Variables** in the Vercel project settings:
+   `JWT_SECRET`, `GROQ_API_KEY` (and/or the other provider keys),
+   `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`.
+4. **Deploy.** The frontend is served statically; every `/api/*` request is handled by
+   the serverless function. The tables are created automatically on first request.
 
-## Where to go next (memory & retrieval — not built yet)
+## What changed vs. the original starter
 
-You mentioned multi-model routing mattered most for this first pass, so that's what's
-built and working. The two other pieces from the original brief aren't in here yet:
+This version was reworked to actually run on Vercel's serverless platform:
 
-- **Persistent memory**: the DB already stores full conversation history per user, so
-  "remembering past conversations" mostly means: on each new chat, pull a summary of
-  the user's last few conversations and prepend it to the message history sent to the
-  model. That's a small addition to `routes/chat.js`.
-- **RAG / retrieval**: would need a documents table, a chunking step, and embeddings
-  (Anthropic doesn't serve embeddings — you'd need OpenAI's or a local model like
-  `all-MiniLM`) stored in a vector index (sqlite-vec works well alongside the sqlite
-  setup here, or Pinecone/Qdrant if you want a hosted option).
+- **Serverless entrypoint added.** The Express app is now exported (`export default app`)
+  and invoked per-request by `api/index.js`; it only calls `app.listen()` in local dev.
+  (Previously it only called `app.listen()` and exported nothing — a serverless function
+  with nothing to invoke, which is what produced `FUNCTION_INVOCATION_FAILED`.)
+- **Storage moved off the local disk.** `node:sqlite` wrote a file to the app directory,
+  which is read-only on Vercel and wiped between cold starts. It's now **libSQL/Turso**
+  (still SQLite — the schema and queries are unchanged; DB calls are just `await`ed).
+- **Groq provider added** and wired into the router + registry.
+- **Hardened for production:** clear errors for missing `JWT_SECRET`/DB config, and route
+  handlers no longer crash the function on a bad request or upstream error.
 
-Happy to build either of those next once this base is running for you.
+## Not built yet (from the original brief)
+
+- **Persistent memory across chats:** the DB already stores full history per user, so this
+  is mostly: summarize the user's recent conversations and prepend to the message list in
+  `routes/chat.js`.
+- **RAG / retrieval:** would need a documents table, chunking, embeddings (OpenAI's or a
+  local model), and a vector index (Turso supports vector columns, or use Pinecone/Qdrant).
