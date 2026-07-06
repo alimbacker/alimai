@@ -1,24 +1,7 @@
-# Dependencies
 node_modules/
-
-# Env / secrets — NEVER commit these
+dist/
 .env
 .env.local
-.env.*.local
-
-# Build output
-frontend/dist/
-dist/
-
-# Local database file (dev only)
+.vercel/
 *.sqlite
-*.sqlite-journal
-*.sqlite-wal
-*.sqlite-shm
-
-# Vercel
-.vercel
-
-# Logs / OS
-*.log
 .DS_Store
