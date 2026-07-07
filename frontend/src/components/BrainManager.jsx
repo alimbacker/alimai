@@ -104,8 +104,9 @@ export default function BrainManager({ brains, embeddings, initialBrainId, onClo
         <div className="modal-body">
           {!embeddings && (
             <div className="hint warn">
-              ⚠ No <code>OPENAI_API_KEY</code> set — retrieval falls back to keyword matching.
-              Add one on the server for semantic (meaning-based) search.
+              ⚠ No embeddings key set (<code>GEMINI_API_KEY</code> or <code>OPENAI_API_KEY</code>) —
+              retrieval falls back to keyword matching. Add one on the server for
+              semantic (meaning-based) search.
             </div>
           )}
 

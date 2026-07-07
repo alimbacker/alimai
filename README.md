@@ -120,10 +120,22 @@ or upload a `.txt`/`.md` file. Then above the message box pick:
    Node; keyword fallback if no embeddings key) and prepends them as a system
    prompt before calling the model.
 
-### Embeddings key
-Semantic search needs `OPENAI_API_KEY` (used only for embeddings — cheap, ~$0.02
-per 1M tokens). Without it, Brains still work using keyword matching. Groq has no
-embeddings endpoint, so it can't provide this.
+### Embeddings key (semantic search)
+
+Brains work out of the box with keyword matching. For semantic (meaning-based)
+search, set ONE of these on the server (local `.env` + Vercel env vars):
+
+- **`GEMINI_API_KEY` — free.** Grab a key in ~1 minute at
+  https://aistudio.google.com/apikey (no billing). Uses Google's
+  `gemini-embedding-001` on its free tier. **Recommended.**
+- **`OPENAI_API_KEY`** — paid but ~$0.02 / 1M tokens; also unlocks GPT-4o models
+  in the picker.
+
+If both are set, Gemini is used. Groq has no embeddings endpoint, which is why one
+of these is needed. Provider selection lives in `services/embeddings.js`; documents
+are embedded with `RETRIEVAL_DOCUMENT` and queries with `RETRIEVAL_QUERY` for better
+retrieval. Note: embeddings from different providers aren't comparable, so if you
+switch providers, re-add your documents.
 
 ### New API surface
 `GET/POST /api/brains`, `DELETE /api/brains/:id`,

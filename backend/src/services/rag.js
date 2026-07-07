@@ -55,6 +55,7 @@ export function chunkText(text) {
 
 // ---- Similarity -------------------------------------------------------------
 function cosineSim(a, b) {
+  if (!a || !b || a.length !== b.length) return 0; // different model/dims -> not comparable
   let dot = 0, na = 0, nb = 0;
   for (let i = 0; i < a.length; i++) {
     dot += a[i] * b[i];
