@@ -1,8 +1,14 @@
 // Adapter for Anthropic's /v1/messages API.
 // Unified contract: sendMessage(modelId, messages) -> { text }
-// `messages` is [{ role: 'user'|'assistant', content: string }]
+// `messages` may include leading { role: 'system', content } entries injected by
+// the RAG layer. Anthropic takes `system` as a TOP-LEVEL field (not a message),
+// so we split it out here. OpenAI/Groq accept system as a normal message, so
+// their adapters don't need this.
 
 export async function sendMessage(modelId, messages) {
+  const systemParts = messages.filter((m) => m.role === "system").map((m) => m.content);
+  const turns = messages.filter((m) => m.role !== "system");
+
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -13,7 +19,8 @@ export async function sendMessage(modelId, messages) {
     body: JSON.stringify({
       model: modelId,
       max_tokens: 1024,
-      messages,
+      ...(systemParts.length ? { system: systemParts.join("\n\n") } : {}),
+      messages: turns,
     }),
   });
 

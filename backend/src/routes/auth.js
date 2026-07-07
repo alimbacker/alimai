@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { v4 as uuidv4 } from "uuid";
 import { get, run } from "../db.js";
+import { requireAuth } from "../middleware/auth.js";
 
 const router = Router();
 
@@ -65,6 +66,18 @@ router.post("/login", async (req, res) => {
   } catch (err) {
     console.error("login failed:", err);
     res.status(500).json({ error: "Login failed" });
+  }
+});
+
+router.get("/me", requireAuth, async (req, res) => {
+  try {
+    const user = await get("SELECT id, name, email, is_admin, status FROM users WHERE id = ?", [req.userId]);
+    const { isAdminUser } = await import("../services/admin.js");
+    if (!user) return res.status(404).json({ error: "User not found" });
+    res.json({ user: { ...user, is_admin: isAdminUser(user) } });
+  } catch (err) {
+    console.error("me failed:", err);
+    res.status(500).json({ error: "Failed to load user" });
   }
 });
 

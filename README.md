@@ -97,10 +97,74 @@ This version was reworked to actually run on Vercel's serverless platform:
 - **Hardened for production:** clear errors for missing `JWT_SECRET`/DB config, and route
   handlers no longer crash the function on a bad request or upstream error.
 
-## Not built yet (from the original brief)
+## Brains (RAG — chat with your own data)
 
-- **Persistent memory across chats:** the DB already stores full history per user, so this
-  is mostly: summarize the user's recent conversations and prepend to the message list in
-  `routes/chat.js`.
-- **RAG / retrieval:** would need a documents table, chunking, embeddings (OpenAI's or a
-  local model), and a vector index (Turso supports vector columns, or use Pinecone/Qdrant).
+A **Brain** is a named knowledge base built from documents you paste or upload.
+On each message Alim finds the most relevant chunks from the chosen Brain and
+feeds them to the model, so answers are grounded in *your* data rather than the
+model's training. This is NOT fine-tuning — updates are instant and free, and it
+works even on Groq (which can't fine-tune).
+
+**Use it:** open the app → sidebar **Brains → ＋** → create a Brain → paste text
+or upload a `.txt`/`.md` file. Then above the message box pick:
+
+- **✨ Smart** — auto-routes your question across all your Brains.
+- **🧠 A specific Brain** — pins answers to that one knowledge base.
+- **○ No Brain** — plain chat, no retrieval.
+
+### How it works
+1. `POST /api/brains/:id/documents` chunks the text (~1100 chars, overlapping),
+   embeds each chunk (OpenAI `text-embedding-3-small`), and stores them in the
+   `chunks` table (embedding as JSON).
+2. On send, `routes/chat.js` retrieves the top matches (cosine similarity in
+   Node; keyword fallback if no embeddings key) and prepends them as a system
+   prompt before calling the model.
+
+### Embeddings key
+Semantic search needs `OPENAI_API_KEY` (used only for embeddings — cheap, ~$0.02
+per 1M tokens). Without it, Brains still work using keyword matching. Groq has no
+embeddings endpoint, so it can't provide this.
+
+### New API surface
+`GET/POST /api/brains`, `DELETE /api/brains/:id`,
+`GET/POST /api/brains/:id/documents`, `DELETE /api/brains/:id/documents/:docId`,
+`GET /api/auth/me`. Chat accepts `{ brainId, routingMode }`.
+
+### Scaling note
+Ranking is done in-process, which is ideal up to a few thousand chunks. Beyond
+that, move ranking to a real vector index (Turso vector columns, Qdrant, or
+Pinecone) — only `services/rag.js` changes.
+
+## Still open (nice-to-haves)
+- **PDF/DOCX ingestion:** currently paste or `.txt`/`.md`. Add server-side
+  parsing (e.g. `pdf-parse`) in `routes/brains.js` to accept those.
+- **Streaming responses** and **persistent cross-chat memory**.
+
+## Admin Dashboard
+
+A full admin portal at **/admin** (reachable from the avatar menu → Admin Portal).
+
+**Become an admin:** set `ADMIN_EMAILS=your@email.com` in your env (local + Vercel),
+then log in with that account. From there you can create or promote more admins in
+the dashboard (the "Admins" panel).
+
+**What it shows (all live from your DB):**
+- **Stat cards:** users, active (30d), new today, conversations, messages, documents,
+  chunks, brains, admins.
+- **Activity charts:** daily signups and daily messages (7d).
+- **Retrieval Analytics (30d):** semantic hits vs keyword fallback, zero-result rate,
+  clarifications, avg latency, errors, and 👍/👎 Helpful % — powered by a new
+  `retrieval_events` row logged on every turn and `message_feedback` from the thumbs
+  buttons now shown under each answer.
+- **User management:** search, Export CSV, reset password (returns a temp password),
+  and Suspend / Disable / Terminate / Delete. Non-active accounts are blocked at login.
+
+**New endpoints:** `GET /api/admin/stats`, `GET /api/admin/analytics`,
+`GET /api/admin/users`, `POST /api/admin/users/:id/status`,
+`POST /api/admin/users/:id/reset-password`, `DELETE /api/admin/users/:id`,
+`GET/POST /api/admin/admins`, `DELETE /api/admin/admins/:id`,
+plus `POST /api/chat/conversations/:id/messages/:msgId/feedback`. All admin routes
+require the `requireAdmin` middleware.
+
+**Appearance:** the avatar menu also has a Light / System / Dark theme toggle
+(persisted per browser).

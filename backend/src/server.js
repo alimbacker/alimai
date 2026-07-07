@@ -4,6 +4,8 @@ import cors from "cors";
 import authRoutes from "./routes/auth.js";
 import modelsRoutes from "./routes/models.js";
 import chatRoutes from "./routes/chat.js";
+import brainsRoutes from "./routes/brains.js";
+import adminRoutes from "./routes/admin.js";
 // Importing db.js here guarantees the schema is created (its top-level migration
 // runs on import) before any request is handled — on both local and serverless.
 import "./db.js";
@@ -15,6 +17,8 @@ app.use(express.json());
 app.use("/api/auth", authRoutes);
 app.use("/api/models", modelsRoutes);
 app.use("/api/chat", chatRoutes);
+app.use("/api/brains", brainsRoutes);
+app.use("/api/admin", adminRoutes);
 
 app.get("/api/health", (req, res) => res.json({ ok: true }));
 
