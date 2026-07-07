@@ -4,6 +4,8 @@ import { v4 as uuidv4 } from "uuid";
 import { get, all, run } from "../db.js";
 import { requireAdmin } from "../middleware/admin.js";
 import { isAdminUser, adminEmailSet } from "../services/admin.js";
+import { chunkText } from "../services/rag.js";
+import { embed, embeddingsAvailable } from "../services/embeddings.js";
 
 const router = Router();
 router.use(requireAdmin);
@@ -239,6 +241,112 @@ router.delete("/admins/:id", async (req, res) => {
   } catch (err) {
     console.error("demote failed:", err);
     res.status(500).json({ error: "Failed to update admin" });
+  }
+});
+
+
+// ── Knowledge base (admin-managed brains) ─────────────────────────────────────
+// Admin brains are created with is_global = 1 so EVERY user's chat can retrieve
+// from them. This is the central knowledge store.
+
+router.get("/brains", async (req, res) => {
+  try {
+    const rows = await all(`
+      SELECT b.id, b.name, b.emoji, b.description, b.is_global, b.created_at,
+             u.email AS owner_email,
+             (SELECT COUNT(*) FROM documents d WHERE d.brain_id = b.id) AS doc_count,
+             (SELECT COUNT(*) FROM chunks c WHERE c.brain_id = b.id) AS chunk_count
+        FROM brains b LEFT JOIN users u ON u.id = b.user_id
+       ORDER BY b.is_global DESC, b.created_at DESC`);
+    res.json({ brains: rows, embeddings: embeddingsAvailable() });
+  } catch (err) {
+    console.error("admin list brains failed:", err);
+    res.status(500).json({ error: "Failed to load brains" });
+  }
+});
+
+router.post("/brains", async (req, res) => {
+  try {
+    const { name, emoji, description } = req.body ?? {};
+    if (!name?.trim()) return res.status(400).json({ error: "Brain name is required" });
+    const id = uuidv4();
+    await run(
+      "INSERT INTO brains (id, user_id, name, emoji, description, is_global) VALUES (?, ?, ?, ?, ?, 1)",
+      [id, req.userId, name.trim(), emoji || "🧠", description || ""]
+    );
+    res.json({ brain: { id, name: name.trim(), emoji: emoji || "🧠", is_global: 1, doc_count: 0, chunk_count: 0 } });
+  } catch (err) {
+    console.error("admin create brain failed:", err);
+    res.status(500).json({ error: "Failed to create brain" });
+  }
+});
+
+router.delete("/brains/:id", async (req, res) => {
+  try {
+    await run("DELETE FROM chunks WHERE brain_id = ?", [req.params.id]);
+    await run("DELETE FROM documents WHERE brain_id = ?", [req.params.id]);
+    await run("DELETE FROM brains WHERE id = ?", [req.params.id]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("admin delete brain failed:", err);
+    res.status(500).json({ error: "Failed to delete brain" });
+  }
+});
+
+router.get("/brains/:id/documents", async (req, res) => {
+  try {
+    const docs = await all(
+      `SELECT d.id, d.title, d.source, d.created_at,
+              (SELECT COUNT(*) FROM chunks c WHERE c.document_id = d.id) AS chunk_count
+         FROM documents d WHERE d.brain_id = ? ORDER BY d.created_at DESC`,
+      [req.params.id]
+    );
+    res.json({ documents: docs });
+  } catch (err) {
+    console.error("admin list docs failed:", err);
+    res.status(500).json({ error: "Failed to load documents" });
+  }
+});
+
+// Upload a document into a brain (chunk -> embed -> store). Admin can target any brain.
+router.post("/brains/:id/documents", async (req, res) => {
+  try {
+    const brain = await get("SELECT id FROM brains WHERE id = ?", [req.params.id]);
+    if (!brain) return res.status(404).json({ error: "Brain not found" });
+    const { title, text, source } = req.body ?? {};
+    if (!text?.trim()) return res.status(400).json({ error: "Document text is required" });
+
+    const chunks = chunkText(text);
+    if (!chunks.length) return res.status(400).json({ error: "Nothing to index in that text" });
+    if (chunks.length > 800) return res.status(413).json({ error: `Too large (${chunks.length} chunks). Split it up.` });
+
+    const docId = uuidv4();
+    await run("INSERT INTO documents (id, brain_id, title, source) VALUES (?, ?, ?, ?)",
+      [docId, brain.id, (title || "Untitled").slice(0, 200), source || "upload"]);
+
+    let vectors = null;
+    try { vectors = await embed(chunks, "document"); }
+    catch (e) { console.error("admin embed failed, storing without vectors:", e.message); }
+
+    for (let i = 0; i < chunks.length; i++) {
+      await run("INSERT INTO chunks (id, document_id, brain_id, content, embedding) VALUES (?, ?, ?, ?, ?)",
+        [uuidv4(), docId, brain.id, chunks[i], vectors ? JSON.stringify(vectors[i]) : null]);
+    }
+    res.json({ document: { id: docId, title: title || "Untitled", chunk_count: chunks.length }, embedded: !!vectors });
+  } catch (err) {
+    console.error("admin add doc failed:", err);
+    res.status(500).json({ error: err.message || "Failed to add document" });
+  }
+});
+
+router.delete("/brains/:id/documents/:docId", async (req, res) => {
+  try {
+    await run("DELETE FROM chunks WHERE document_id = ?", [req.params.docId]);
+    await run("DELETE FROM documents WHERE id = ? AND brain_id = ?", [req.params.docId, req.params.id]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("admin delete doc failed:", err);
+    res.status(500).json({ error: "Failed to delete document" });
   }
 });
 

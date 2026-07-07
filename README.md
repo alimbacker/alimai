@@ -180,3 +180,33 @@ require the `requireAdmin` middleware.
 
 **Appearance:** the avatar menu also has a Light / System / Dark theme toggle
 (persisted per browser).
+
+## This round's additions
+
+### Effort tiers (model names hidden)
+The chat header now shows **Low / Medium / High** instead of a model name. Each tier
+maps to a real model server-side via `resolveTier()` in `services/modelRegistry.js`
+(picking the first *configured* model), so users never see which model runs. With
+only Groq set, Low→gpt-oss-20b and Medium/High→gpt-oss-120b; add Anthropic/OpenAI keys
+and High automatically upgrades. The chat API accepts `{ tier }` (legacy `modelId`
+still works).
+
+### Delete chats
+Each conversation in the sidebar has a trash button. `DELETE /api/chat/conversations/:id`
+removes the conversation and its messages (owner-checked).
+
+### Admin-managed knowledge base (shared brains)
+The **Admin Dashboard** is now tabbed — **Overview / Knowledge / Users / Admins**.
+The **Knowledge** tab is a central store: create **shared brains** (`is_global = 1`)
+and upload documents to them. Shared brains are retrievable by **every** user's chat
+(Smart routing and the brain picker both include them), so knowledge lives in one
+admin-controlled place.
+
+**File upload:** drag in `.txt .md .csv .json .html .log …` and **`.pdf`**. PDFs are
+parsed in the browser with pdf.js (lazy-loaded, so it only downloads when you upload
+one) — the serverless function needs no PDF dependency. Scanned/image-only PDFs have no
+extractable text and will report that.
+
+**New endpoints:** `GET /api/models/tiers`, and under `/api/admin`:
+`GET/POST /brains`, `DELETE /brains/:id`, `GET/POST /brains/:id/documents`,
+`DELETE /brains/:id/documents/:docId`.

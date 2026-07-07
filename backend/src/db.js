@@ -120,6 +120,7 @@ await addColumnIfMissing("messages", "brain_id TEXT");
 await addColumnIfMissing("users", "is_admin INTEGER DEFAULT 0");
 await addColumnIfMissing("users", "status TEXT DEFAULT 'active'");
 await addColumnIfMissing("users", "last_login TEXT");
+await addColumnIfMissing("brains", "is_global INTEGER DEFAULT 0");
 
 export async function get(sql, args = []) {
   const rs = await client.execute({ sql, args });

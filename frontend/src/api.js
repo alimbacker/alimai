@@ -35,11 +35,16 @@ export const api = {
       body: JSON.stringify({ title }) }).then(handle),
   getMessages: (id) =>
     fetch(`${BASE}/chat/conversations/${id}/messages`, { headers: authHeaders() }).then(handle),
-  sendMessage: (id, content, modelId, { brainId, routingMode } = {}) =>
+  sendMessage: (id, content, tier, { brainId, routingMode } = {}) =>
     fetch(`${BASE}/chat/conversations/${id}/messages`, {
       method: "POST", headers: jsonHeaders(),
-      body: JSON.stringify({ content, modelId, brainId, routingMode }),
+      body: JSON.stringify({ content, tier, brainId, routingMode }),
     }).then(handle),
+
+  deleteConversation: (id) =>
+    fetch(`${BASE}/chat/conversations/${id}`, { method: "DELETE", headers: authHeaders() }).then(handle),
+
+  getTiers: () => fetch(`${BASE}/models/tiers`, { headers: authHeaders() }).then(handle),
 
   // --- brains (RAG knowledge bases) ---
   getBrains: () => fetch(`${BASE}/brains`, { headers: authHeaders() }).then(handle),
@@ -80,4 +85,19 @@ export const api = {
       body: JSON.stringify({ email, password, name }) }).then(handle),
   removeAdmin: (id) =>
     fetch(`${BASE}/admin/admins/${id}`, { method: "DELETE", headers: authHeaders() }).then(handle),
+
+  // --- admin knowledge (shared brains + docs) ---
+  adminGetBrains: () => fetch(`${BASE}/admin/brains`, { headers: authHeaders() }).then(handle),
+  adminCreateBrain: (name, emoji, description) =>
+    fetch(`${BASE}/admin/brains`, { method: "POST", headers: jsonHeaders(),
+      body: JSON.stringify({ name, emoji, description }) }).then(handle),
+  adminDeleteBrain: (id) =>
+    fetch(`${BASE}/admin/brains/${id}`, { method: "DELETE", headers: authHeaders() }).then(handle),
+  adminGetDocuments: (brainId) =>
+    fetch(`${BASE}/admin/brains/${brainId}/documents`, { headers: authHeaders() }).then(handle),
+  adminAddDocument: (brainId, title, text, source = "upload") =>
+    fetch(`${BASE}/admin/brains/${brainId}/documents`, { method: "POST", headers: jsonHeaders(),
+      body: JSON.stringify({ title, text, source }) }).then(handle),
+  adminDeleteDocument: (brainId, docId) =>
+    fetch(`${BASE}/admin/brains/${brainId}/documents/${docId}`, { method: "DELETE", headers: authHeaders() }).then(handle),
 };

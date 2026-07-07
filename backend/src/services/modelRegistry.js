@@ -62,6 +62,39 @@ export function getAvailableModels() {
   }));
 }
 
+// ── Effort tiers ──────────────────────────────────────────────────────────
+// Users pick Low / Medium / High; the real model name is never shown to them.
+// Each tier has an ordered preference list; we use the first model whose API key
+// is configured, so a tier always resolves even if only one provider is set up.
+const TIER_PREFERENCES = {
+  low: ["openai/gpt-oss-20b", "gpt-4o-mini", "claude-haiku-4-5", "openai/gpt-oss-120b", "gpt-4o", "claude-sonnet-4-6"],
+  medium: ["openai/gpt-oss-120b", "gpt-4o-mini", "claude-haiku-4-5", "gpt-4o", "openai/gpt-oss-20b", "claude-sonnet-4-6"],
+  high: ["claude-sonnet-4-6", "gpt-4o", "openai/gpt-oss-120b", "claude-haiku-4-5", "gpt-4o-mini", "openai/gpt-oss-20b"],
+};
+
+export const TIERS = ["low", "medium", "high"];
+
+// Resolve a tier (or a raw modelId, for backward-compat) to a concrete model id
+// that is actually configured. Returns null if no provider key is set at all.
+export function resolveTier(tierOrModel) {
+  // If a real model id was passed and it's available, honor it (back-compat).
+  const direct = getModelDefinition(tierOrModel);
+  if (direct && process.env[direct.envKey]) return direct.id;
+
+  const pref = TIER_PREFERENCES[String(tierOrModel || "").toLowerCase()];
+  if (!pref) return null;
+  for (const id of pref) {
+    const def = getModelDefinition(id);
+    if (def && process.env[def.envKey]) return def.id;
+  }
+  return null;
+}
+
+// Which tiers can be served right now (all three if any model is configured).
+export function getAvailableTiers() {
+  return TIERS.filter((t) => resolveTier(t) !== null);
+}
+
 export function getModelDefinition(modelId) {
   return MODEL_REGISTRY.find((m) => m.id === modelId);
 }

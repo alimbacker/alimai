@@ -452,3 +452,68 @@ textarea.field { resize: vertical; min-height: 120px; line-height: 1.5; }
 .fb:hover { opacity: 1; }
 .fb.up { opacity: 1; border-color: #37c778; }
 .fb.down { opacity: 1; border-color: var(--danger); }
+
+/* ============ TIER SELECTOR ============ */
+.tier-selector {
+  background: var(--card); color: var(--text); border: 1px solid var(--border);
+  border-radius: 10px; padding: 9px 12px; font-size: 13px; outline: none; min-width: 110px;
+}
+
+/* ============ DELETE-CHAT ROW ============ */
+/* .convo-row is now a flex container holding the open button + a trash button. */
+.convo-row {
+  display: flex; align-items: center; gap: 2px; padding: 0; border-radius: 10px;
+  background: transparent; border: none;
+}
+.convo-row:hover, .convo-row--active { background: var(--card); }
+.convo-open {
+  display: flex; align-items: center; gap: 9px; flex: 1; min-width: 0;
+  background: transparent; border: none; color: var(--muted); font-size: 13.5px;
+  text-align: left; padding: 9px 4px 9px 10px;
+}
+.convo-row:hover .convo-open, .convo-row--active .convo-open { color: var(--text); }
+.convo-open .dot { color: var(--faint); flex-shrink: 0; }
+.convo-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.convo-del {
+  background: transparent; border: none; color: var(--faint); font-size: 13px;
+  padding: 6px 9px; border-radius: 8px; opacity: 0; flex-shrink: 0; transition: opacity .12s;
+}
+.convo-row:hover .convo-del { opacity: 1; }
+.convo-del:hover { color: var(--danger); background: rgba(239,91,91,.1); }
+
+.shared-tag {
+  font-size: 9px; text-transform: uppercase; letter-spacing: .04em;
+  background: rgba(23,184,166,.16); color: var(--accent);
+  border-radius: 4px; padding: 1px 5px; margin-left: 4px;
+}
+
+/* ============ ADMIN TABS ============ */
+.admin-tabs {
+  display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 1px solid var(--border-soft);
+  overflow-x: auto;
+}
+.admin-tab {
+  background: transparent; border: none; color: var(--muted); font-size: 14px;
+  padding: 10px 16px; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap;
+}
+.admin-tab:hover { color: var(--text); }
+.admin-tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+
+/* ============ ADMIN KNOWLEDGE ============ */
+.knowledge-grid { display: grid; grid-template-columns: 320px 1fr; gap: 16px; }
+@media (max-width: 780px){ .knowledge-grid { grid-template-columns: 1fr; } }
+.kb-brain {
+  display: flex; align-items: center; justify-content: space-between; width: 100%;
+  padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border-soft);
+  background: var(--panel); color: var(--text); font-size: 13.5px; margin-bottom: 8px; text-align: left;
+}
+.kb-brain:hover { border-color: var(--border); }
+.kb-brain.active { border-color: var(--accent); }
+.file-drop {
+  display: block; margin-top: 12px; border: 1.5px dashed var(--border); border-radius: 12px;
+  cursor: pointer; transition: border-color .15s, background .15s;
+}
+.file-drop:hover { border-color: var(--accent); background: var(--card); }
+.file-drop input { display: none; }
+.file-drop-inner { padding: 26px 18px; text-align: center; color: var(--muted); }
+.file-drop-inner > div:nth-child(2) { color: var(--text); font-size: 14px; margin-top: 6px; }

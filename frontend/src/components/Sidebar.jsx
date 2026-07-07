@@ -1,7 +1,7 @@
 // Left rail: New Chat, search, Brains list, recent chats grouped by time.
 export default function Sidebar({
   user, brains, conversations, activeId,
-  onNewChat, onOpenConversation, onManageBrains, onOpenBrain, onLogout,
+  onNewChat, onOpenConversation, onDeleteConversation, onManageBrains, onOpenBrain, onLogout,
 }) {
   const [today, older] = groupByTime(conversations);
   return (
@@ -22,6 +22,7 @@ export default function Sidebar({
           <button key={b.id} className="brain-row" onClick={() => onOpenBrain(b)}>
             <span className="emoji">{b.emoji}</span>
             <span>{b.name}</span>
+            {b.is_global ? <span className="shared-tag" title="Shared knowledge">shared</span> : null}
             <span className="count">{b.doc_count}</span>
           </button>
         ))}
@@ -30,11 +31,13 @@ export default function Sidebar({
         {conversations.length === 0 && <div className="sb-empty">Nothing yet</div>}
         {today.length > 0 && <div className="time-label">Today</div>}
         {today.map((c) => (
-          <ConvoRow key={c.id} c={c} active={c.id === activeId} onClick={() => onOpenConversation(c.id)} />
+          <ConvoRow key={c.id} c={c} active={c.id === activeId}
+            onOpen={() => onOpenConversation(c.id)} onDelete={() => onDeleteConversation(c.id)} />
         ))}
         {older.length > 0 && <div className="time-label">Older</div>}
         {older.map((c) => (
-          <ConvoRow key={c.id} c={c} active={c.id === activeId} onClick={() => onOpenConversation(c.id)} />
+          <ConvoRow key={c.id} c={c} active={c.id === activeId}
+            onOpen={() => onOpenConversation(c.id)} onDelete={() => onDeleteConversation(c.id)} />
         ))}
       </div>
 
@@ -46,11 +49,19 @@ export default function Sidebar({
   );
 }
 
-function ConvoRow({ c, active, onClick }) {
+function ConvoRow({ c, active, onOpen, onDelete }) {
   return (
-    <button className={`convo-row ${active ? "convo-row--active" : ""}`} onClick={onClick}>
-      <span className="dot">💬</span> {c.title}
-    </button>
+    <div className={`convo-row ${active ? "convo-row--active" : ""}`}>
+      <button className="convo-open" onClick={onOpen} title={c.title}>
+        <span className="dot">💬</span>
+        <span className="convo-title">{c.title}</span>
+      </button>
+      <button
+        className="convo-del"
+        title="Delete chat"
+        onClick={(e) => { e.stopPropagation(); onDelete(); }}
+      >🗑</button>
+    </div>
   );
 }
 

@@ -123,7 +123,11 @@ export async function retrieveForBrain(brainId, query, k = TOP_K) {
 // Smart mode: search across ALL the user's brains, then report which brain the
 // best hits came from (so the UI can show "routed to Legal Brain").
 export async function retrieveSmart(userId, query, k = TOP_K) {
-  const brains = await all("SELECT id FROM brains WHERE user_id = ?", [userId]);
+  // The user's own brains PLUS any global/shared brains (admin-managed knowledge).
+  const brains = await all(
+    "SELECT id FROM brains WHERE user_id = ? OR is_global = 1",
+    [userId]
+  );
   const ids = brains.map((b) => b.id);
   const hits = await rankChunks(ids, query, k);
   const winningBrainId = hits[0]?.brainId || null;

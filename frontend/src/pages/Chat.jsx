@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api.js";
-import ModelSelector from "../components/ModelSelector.jsx";
+import TierSelector from "../components/TierSelector.jsx";
 import ChatMessage from "../components/ChatMessage.jsx";
 import Sidebar from "../components/Sidebar.jsx";
 import WelcomeScreen from "../components/WelcomeScreen.jsx";
@@ -11,8 +11,8 @@ import { applyAppearance } from "../lib/theme.js";
 
 export default function Chat({ onLogout }) {
   const [user, setUser] = useState(null);
-  const [models, setModels] = useState([]);
-  const [selectedModel, setSelectedModel] = useState(null);
+  const [tiers, setTiers] = useState(["low", "medium", "high"]);
+  const [tier, setTier] = useState("medium");
   const [conversations, setConversations] = useState([]);
   const [activeId, setActiveId] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -40,10 +40,7 @@ export default function Chat({ onLogout }) {
   useEffect(() => {
     applyAppearance();
     api.me().then((d) => setUser(d.user)).catch(() => {});
-    api.getModels().then((d) => {
-      setModels(d.models);
-      if (d.models.length > 0) setSelectedModel(d.models[0].id);
-    });
+    api.getTiers().then((d) => { if (d.tiers?.length) setTiers(d.tiers); }).catch(() => {});
     api.getConversations().then((d) => setConversations(d.conversations));
     loadBrains().catch(() => {});
   }, []);
@@ -70,10 +67,21 @@ export default function Chat({ onLogout }) {
     setMessages(messages);
   }
 
+  async function deleteChat(id) {
+    if (!confirm("Delete this chat? This can't be undone.")) return;
+    try {
+      await api.deleteConversation(id);
+      setConversations((prev) => prev.filter((c) => c.id !== id));
+      if (id === activeId) { setActiveId(null); setMessages([]); }
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
   // Send text (optionally overriding the brain, e.g. from a suggestion card).
   async function send(text, overrideRouting) {
     const content = (text ?? input).trim();
-    if (!content || !selectedModel || sending) return;
+    if (!content || sending) return;
 
     let convoId = activeId;
     if (!convoId) {
@@ -92,7 +100,7 @@ export default function Chat({ onLogout }) {
 
     const r = overrideRouting || routing;
     try {
-      const { reply } = await api.sendMessage(convoId, content, selectedModel, {
+      const { reply } = await api.sendMessage(convoId, content, tier, {
         brainId: r.mode === "manual" ? r.brainId : undefined,
         routingMode: r.mode,
       });
@@ -111,7 +119,6 @@ export default function Chat({ onLogout }) {
     }
   }
 
-  // Suggestion card → pin that brain and ask.
   function pickSuggestion(text, brain) {
     const r = { mode: "manual", brainId: brain.id };
     setRouting(r);
@@ -124,7 +131,6 @@ export default function Chat({ onLogout }) {
   }
 
   const isAdmin = !!user?.is_admin;
-  const initials = (user?.name || user?.email || "A").slice(0, 1).toUpperCase();
 
   return (
     <div className="app">
@@ -135,6 +141,7 @@ export default function Chat({ onLogout }) {
         activeId={activeId}
         onNewChat={newChat}
         onOpenConversation={openConversation}
+        onDeleteConversation={deleteChat}
         onManageBrains={() => { setManagerBrainId(null); setManagerOpen(true); }}
         onOpenBrain={(b) => { setManagerBrainId(b.id); setManagerOpen(true); }}
         onLogout={onLogout}
@@ -149,7 +156,7 @@ export default function Chat({ onLogout }) {
             </div>
           </div>
           <div className="topbar-right">
-            <ModelSelector models={models} selected={selectedModel} onChange={setSelectedModel} />
+            <TierSelector value={tier} onChange={setTier} tiers={tiers} />
             <ProfileMenu user={user} isAdmin={isAdmin} onLogout={onLogout} />
           </div>
         </header>

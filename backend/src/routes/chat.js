@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from "uuid";
 import { get, all, run } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
 import { routeMessage } from "../services/modelRouter.js";
+import { resolveTier } from "../services/modelRegistry.js";
 import { retrieveForBrain, retrieveSmart, buildSystemPrompt } from "../services/rag.js";
 import { embeddingsAvailable } from "../services/embeddings.js";
 
@@ -55,9 +56,12 @@ router.get("/conversations/:id/messages", async (req, res) => {
 // Send a message. Body: { content, modelId, brainId?, routingMode? }
 //   routingMode: "smart" (search all brains) | "manual" (use brainId) | "none" (no RAG)
 router.post("/conversations/:id/messages", async (req, res) => {
-  const { content, modelId, brainId, routingMode = "smart" } = req.body ?? {};
-  if (!content || !modelId) {
-    return res.status(400).json({ error: "content and modelId are required" });
+  const { content, tier, modelId, brainId, routingMode = "smart" } = req.body ?? {};
+  if (!content) return res.status(400).json({ error: "content is required" });
+  // The client sends an effort tier (low/medium/high); modelId is legacy fallback.
+  const resolvedModel = resolveTier(tier || modelId || "medium");
+  if (!resolvedModel) {
+    return res.status(400).json({ error: "No AI model is configured on the server." });
   }
 
   const startedAt = Date.now();
@@ -79,7 +83,7 @@ router.post("/conversations/:id/messages", async (req, res) => {
     let usedBrain = null; // { id, name, emoji }
     if (routingMode !== "none") {
       if (routingMode === "manual" && brainId) {
-        const brain = await get("SELECT * FROM brains WHERE id = ? AND user_id = ?", [brainId, req.userId]);
+        const brain = await get("SELECT * FROM brains WHERE id = ? AND (user_id = ? OR is_global = 1)", [brainId, req.userId]);
         if (brain) {
           hits = await retrieveForBrain(brain.id, content);
           usedBrain = { id: brain.id, name: brain.name, emoji: brain.emoji };
@@ -105,7 +109,7 @@ router.post("/conversations/:id/messages", async (req, res) => {
       ? [{ role: "system", content: buildSystemPrompt(usedBrain.name, hits) }, ...history]
       : history;
 
-    const { text, provider, model } = await routeMessage(modelId, providerMessages);
+    const { text, provider, model } = await routeMessage(resolvedModel, providerMessages);
 
     const assistantMsgId = uuidv4();
     await run(
@@ -138,6 +142,20 @@ router.post("/conversations/:id/messages", async (req, res) => {
       );
     } catch (e) { /* ignore */ }
     res.status(502).json({ error: err.message || "Failed to get a reply" });
+  }
+});
+
+// Delete a conversation (and its messages). Must belong to the caller.
+router.delete("/conversations/:id", async (req, res) => {
+  try {
+    const convo = await get("SELECT id FROM conversations WHERE id = ? AND user_id = ?", [req.params.id, req.userId]);
+    if (!convo) return res.status(404).json({ error: "Conversation not found" });
+    await run("DELETE FROM messages WHERE conversation_id = ?", [req.params.id]);
+    await run("DELETE FROM conversations WHERE id = ?", [req.params.id]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("delete conversation failed:", err);
+    res.status(500).json({ error: "Failed to delete conversation" });
   }
 });
 

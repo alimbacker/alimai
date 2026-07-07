@@ -19,7 +19,8 @@ router.get("/", async (req, res) => {
     const rows = await all(
       `SELECT b.*,
               (SELECT COUNT(*) FROM documents d WHERE d.brain_id = b.id) AS doc_count
-         FROM brains b WHERE b.user_id = ? ORDER BY b.created_at ASC`,
+         FROM brains b WHERE b.user_id = ? OR b.is_global = 1
+         ORDER BY b.is_global DESC, b.created_at ASC`,
       [req.userId]
     );
     res.json({ brains: rows, embeddings: embeddingsAvailable() });
