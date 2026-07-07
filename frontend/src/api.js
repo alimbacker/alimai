@@ -51,6 +51,8 @@ export const api = {
   createBrain: (name, emoji, description) =>
     fetch(`${BASE}/brains`, { method: "POST", headers: jsonHeaders(),
       body: JSON.stringify({ name, emoji, description }) }).then(handle),
+  reindexBrain: (id) =>
+    fetch(`${BASE}/brains/${id}/reindex`, { method: "POST", headers: authHeaders() }).then(handle),
   deleteBrain: (id) =>
     fetch(`${BASE}/brains/${id}`, { method: "DELETE", headers: authHeaders() }).then(handle),
   getDocuments: (brainId) =>
@@ -91,6 +93,8 @@ export const api = {
   adminCreateBrain: (name, emoji, description) =>
     fetch(`${BASE}/admin/brains`, { method: "POST", headers: jsonHeaders(),
       body: JSON.stringify({ name, emoji, description }) }).then(handle),
+  adminReindexBrain: (id) =>
+    fetch(`${BASE}/admin/brains/${id}/reindex`, { method: "POST", headers: authHeaders() }).then(handle),
   adminDeleteBrain: (id) =>
     fetch(`${BASE}/admin/brains/${id}`, { method: "DELETE", headers: authHeaders() }).then(handle),
   adminGetDocuments: (brainId) =>

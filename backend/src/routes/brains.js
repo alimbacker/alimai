@@ -4,6 +4,7 @@ import { get, all, run } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
 import { chunkText } from "../services/rag.js";
 import { embed, embeddingsAvailable } from "../services/embeddings.js";
+import { reindexBrain } from "../services/reindex.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -138,6 +139,19 @@ router.delete("/:id/documents/:docId", async (req, res) => {
   } catch (err) {
     console.error("delete document failed:", err);
     res.status(500).json({ error: "Failed to delete document" });
+  }
+});
+
+// Re-embed all documents in a brain (after adding/switching an embeddings key).
+router.post("/:id/reindex", async (req, res) => {
+  try {
+    const brain = await ownedBrain(req.params.id, req.userId);
+    if (!brain) return res.status(404).json({ error: "Brain not found" });
+    const result = await reindexBrain(brain.id);
+    res.json(result);
+  } catch (err) {
+    console.error("reindex failed:", err);
+    res.status(500).json({ error: err.message || "Failed to re-index" });
   }
 });
 

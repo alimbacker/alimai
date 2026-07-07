@@ -6,6 +6,7 @@ import { requireAdmin } from "../middleware/admin.js";
 import { isAdminUser, adminEmailSet } from "../services/admin.js";
 import { chunkText } from "../services/rag.js";
 import { embed, embeddingsAvailable } from "../services/embeddings.js";
+import { reindexBrain } from "../services/reindex.js";
 
 const router = Router();
 router.use(requireAdmin);
@@ -347,6 +348,16 @@ router.delete("/brains/:id/documents/:docId", async (req, res) => {
   } catch (err) {
     console.error("admin delete doc failed:", err);
     res.status(500).json({ error: "Failed to delete document" });
+  }
+});
+
+router.post("/brains/:id/reindex", async (req, res) => {
+  try {
+    const result = await reindexBrain(req.params.id);
+    res.json(result);
+  } catch (err) {
+    console.error("admin reindex failed:", err);
+    res.status(500).json({ error: err.message || "Failed to re-index" });
   }
 });
 

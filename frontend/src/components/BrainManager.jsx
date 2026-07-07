@@ -45,6 +45,17 @@ export default function BrainManager({ brains, embeddings, initialBrainId, onClo
     finally { setBusy(false); }
   }
 
+  async function reindexNow() {
+    if (!selected) return;
+    setBusy(true); setError(""); setToast("");
+    try {
+      const r = await api.reindexBrain(selected.id);
+      setToast(r.embedded
+        ? `Re-indexed ${r.chunks} chunks with semantic embeddings`
+        : `No embeddings key set — ${r.chunks} chunks kept in keyword mode`);
+    } catch (e) { setError(e.message); } finally { setBusy(false); }
+  }
+
   async function handleDeleteBrain() {
     if (!selected) return;
     if (!confirm(`Delete "${selected.name}" and all its documents?`)) return;
@@ -145,7 +156,10 @@ export default function BrainManager({ brains, embeddings, initialBrainId, onClo
                 <label className="field-label" style={{ margin: 0 }}>
                   Add data to {selected.emoji} {selected.name}
                 </label>
-                <button className="btn-line btn-danger-line" onClick={handleDeleteBrain}>Delete brain</button>
+                <span style={{ display: "inline-flex", gap: 8 }}>
+                  <button className="btn-reindex" onClick={reindexNow} disabled={busy}>↻ Re-index</button>
+                  <button className="btn-line btn-danger-line" onClick={handleDeleteBrain}>Delete brain</button>
+                </span>
               </div>
 
               <div className="mini-tabs" style={{ marginTop: 10 }}>

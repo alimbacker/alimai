@@ -16,6 +16,10 @@ import { embed, embedOne, embeddingsAvailable } from "./embeddings.js";
 const CHUNK_CHARS = 1100; // ~250-300 tokens per chunk
 const CHUNK_OVERLAP = 180; // carry context across the seam
 const TOP_K = 5;
+// Minimum relevance for a chunk to count as a real match.
+// Semantic = cosine similarity (0-1); keyword = normalized token-overlap score.
+const MIN_SEMANTIC_SCORE = 0.5;
+const MIN_KEYWORD_SCORE = 0.06;
 
 // ---- Chunking ---------------------------------------------------------------
 // Split on blank lines first (keeps paragraphs whole), then pack paragraphs
@@ -92,8 +96,13 @@ async function rankChunks(brainIds, query, k = TOP_K) {
   if (!rows.length) return [];
 
   let scored;
-  if (embeddingsAvailable() && rows.some((r) => r.embedding)) {
+  // Relevance floors: below these a "match" is just noise, so we treat the query
+  // as NOT covered by the knowledge base (prevents e.g. "hi" grounding to a resume).
+  let threshold;
+  const semantic = embeddingsAvailable() && rows.some((r) => r.embedding);
+  if (semantic) {
     const qVec = await embedOne(query);
+    threshold = MIN_SEMANTIC_SCORE;
     scored = rows.map((r) => ({
       content: r.content,
       title: r.title,
@@ -101,6 +110,7 @@ async function rankChunks(brainIds, query, k = TOP_K) {
       score: r.embedding ? cosineSim(qVec, JSON.parse(r.embedding)) : 0,
     }));
   } else {
+    threshold = MIN_KEYWORD_SCORE;
     scored = rows.map((r) => ({
       content: r.content,
       title: r.title,
@@ -110,7 +120,7 @@ async function rankChunks(brainIds, query, k = TOP_K) {
   }
 
   return scored
-    .filter((s) => s.score > 0)
+    .filter((s) => s.score >= threshold)
     .sort((a, b) => b.score - a.score)
     .slice(0, k);
 }
@@ -138,9 +148,10 @@ export async function retrieveSmart(userId, query, k = TOP_K) {
 export function buildSystemPrompt(brainName, hits) {
   if (!hits.length) {
     return (
-      `You are Alim AI. The user has a knowledge base but no relevant passages ` +
-      `were found for this question. Answer normally, and if the question seems ` +
-      `to rely on their private data, say you couldn't find it in their documents.`
+      `You are Alim AI. The user picked the "${brainName}" knowledge base, but nothing ` +
+      `relevant to their question is in it. Reply in ONE short sentence saying you don't ` +
+      `have that information in your knowledge base. Do not answer from general knowledge ` +
+      `and do not make anything up.`
     );
   }
   const context = hits
@@ -148,12 +159,23 @@ export function buildSystemPrompt(brainName, hits) {
     .join("\n\n---\n\n");
 
   return (
-    `You are Alim AI, answering using the user's "${brainName}" knowledge base.\n` +
-    `Use ONLY the sources below to answer. If the answer isn't in them, say so ` +
-    `plainly instead of inventing details. Cite sources inline like [Source 1] ` +
-    `when you use them.\n\n` +
+    `You are Alim AI. Answer the user's question using ONLY the sources below.\n` +
+    `RULES:\n` +
+    `- Be concise: a direct answer in a few sentences. Do not pad or over-explain.\n` +
+    `- Use ONLY facts found in the sources. Never invent names, dates, numbers, or details.\n` +
+    `- If the answer isn't in the sources, say so in one sentence and stop.\n` +
+    `- Format as plain sentences or a short bullet list. No big tables, no HTML tags like <br>.\n` +
+    `- Cite sources inline like [Source 1] when you use them.\n\n` +
     `=== KNOWLEDGE BASE ===\n${context}\n=== END ===`
   );
 }
+
+// Used when no knowledge base applies (general questions). Keeps answers tight
+// and discourages the model from confidently inventing specifics.
+export const DEFAULT_SYSTEM_PROMPT =
+  "You are Alim AI, a concise, helpful assistant. Answer directly and briefly — " +
+  "a few short sentences or a short bullet list. Only use a table when the user " +
+  "explicitly asks for one. Never output raw HTML tags like <br>. Don't fabricate " +
+  "specific facts, names, dates, or statistics; if you're not sure, say so plainly.";
 
 export { TOP_K };

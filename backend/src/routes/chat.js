@@ -4,7 +4,7 @@ import { get, all, run } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
 import { routeMessage } from "../services/modelRouter.js";
 import { resolveTier } from "../services/modelRegistry.js";
-import { retrieveForBrain, retrieveSmart, buildSystemPrompt } from "../services/rag.js";
+import { retrieveForBrain, retrieveSmart, buildSystemPrompt, DEFAULT_SYSTEM_PROMPT } from "../services/rag.js";
 import { embeddingsAvailable } from "../services/embeddings.js";
 
 const router = Router();
@@ -104,10 +104,12 @@ router.post("/conversations/:id/messages", async (req, res) => {
       [req.params.id]
     );
 
-    // Prepend a system message with retrieved context (not persisted as chat).
-    const providerMessages = usedBrain
-      ? [{ role: "system", content: buildSystemPrompt(usedBrain.name, hits) }, ...history]
-      : history;
+    // Always prepend a system message: grounded (KB) when a brain matched, else a
+    // concise-general prompt. Never persisted as a chat message.
+    const systemContent = usedBrain
+      ? buildSystemPrompt(usedBrain.name, hits)
+      : DEFAULT_SYSTEM_PROMPT;
+    const providerMessages = [{ role: "system", content: systemContent }, ...history];
 
     const { text, provider, model } = await routeMessage(resolvedModel, providerMessages);
 

@@ -210,3 +210,27 @@ extractable text and will report that.
 **New endpoints:** `GET /api/models/tiers`, and under `/api/admin`:
 `GET/POST /brains`, `DELETE /brains/:id`, `GET/POST /brains/:id/documents`,
 `DELETE /brains/:id/documents/:docId`.
+
+## Answer quality & Smart routing fixes
+
+- **Markdown is now rendered** in chat (react-markdown + GFM), so tables, bold, lists,
+  and code display properly instead of raw `**` / `| … |` / `<br>`. Stray `<br>` tags
+  from the model are stripped.
+- **Concise, grounded prompts.** Every reply gets a system prompt: a strict grounded one
+  when a brain matches (answer only from sources, cite them, never fabricate, no giant
+  tables) and a concise general one otherwise. This stops the essay-length, over-detailed
+  answers.
+- **Relevance threshold** on retrieval (`MIN_SEMANTIC_SCORE` / `MIN_KEYWORD_SCORE` in
+  `services/rag.js`). Trivial/off-topic queries ("hi", "tamil nadu cm") no longer falsely
+  match a brain, so Smart routing is consistent: on-topic → grounded with sources,
+  off-topic → a short general answer tagged "general knowledge".
+- **Model name hidden** in the message tag — assistant messages now read "Alim AI" (or the
+  brain name), never "OPENAI/GPT-OSS-…".
+- **Re-index** button in the admin Knowledge tab and the user Brain manager
+  (`POST /api/brains/:id/reindex`, `POST /api/admin/brains/:id/reindex`). After you add the
+  Gemini key, click it to re-embed existing documents so semantic search actually kicks in.
+
+### If Smart routing still feels off
+Semantic search needs `GEMINI_API_KEY` set **and** your documents embedded. Documents added
+before the key was set are keyword-only — set the key, redeploy, then hit **Re-index** on the
+brain. Keyword mode still works but is much blunter than semantic.

@@ -48,6 +48,17 @@ export default function AdminKnowledge() {
     } catch (e) { setError(e.message); } finally { setBusy(false); }
   }
 
+  async function reindexNow() {
+    if (!selected) return;
+    setBusy(true); setError(""); setToast("");
+    try {
+      const r = await api.adminReindexBrain(selected.id);
+      setToast(r.embedded
+        ? `Re-indexed ${r.chunks} chunks with semantic embeddings ✅`
+        : `No embeddings key set — ${r.chunks} chunks kept in keyword mode`);
+    } catch (e) { setError(e.message); } finally { setBusy(false); }
+  }
+
   async function deleteBrain() {
     if (!selected || !confirm(`Delete "${selected.name}" and all its documents?`)) return;
     setBusy(true);
@@ -146,7 +157,10 @@ export default function AdminKnowledge() {
             <>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div className="panel-title" style={{ margin: 0 }}>{selected.emoji} {selected.name}</div>
-                <button className="btn-line btn-danger-line" onClick={deleteBrain}>Delete brain</button>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button className="btn-reindex" onClick={reindexNow} disabled={busy}>↻ Re-index</button>
+                  <button className="btn-line btn-danger-line" onClick={deleteBrain}>Delete brain</button>
+                </div>
               </div>
 
               <div className="mini-tabs" style={{ marginTop: 12 }}>
