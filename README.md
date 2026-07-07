@@ -234,3 +234,20 @@ extractable text and will report that.
 Semantic search needs `GEMINI_API_KEY` set **and** your documents embedded. Documents added
 before the key was set are keyword-only — set the key, redeploy, then hit **Re-index** on the
 brain. Keyword mode still works but is much blunter than semantic.
+
+## Fix: Brain/Smart mode returned no answer
+
+Symptom: replies only appeared in **No Brain** mode; **Smart**/a specific **Brain** produced
+nothing. Cause: the retrieval step (which runs only in Brain/Smart mode) called the embeddings
+API, and if that call errored the *entire* request failed.
+
+Fixes:
+- **Retrieval can no longer break a reply.** If embedding the query fails (bad key, rate limit,
+  API down) it now falls back to keyword search for that request; and the whole retrieval step is
+  wrapped so any error just yields a normal (brainless) answer instead of a 502.
+- **Gemini request hardened.** Removed `outputDimensionality` from the `batchEmbedContents` call
+  (some API versions reject it), which was a likely cause of the embeddings error.
+
+After deploying: set `GEMINI_API_KEY` if you haven't, then click **↻ Re-index** on your brain so
+documents are (re-)embedded with the corrected request. Semantic search will then work; if the key
+is ever invalid, chat still answers via keyword instead of failing.

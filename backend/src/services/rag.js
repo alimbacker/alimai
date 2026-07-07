@@ -98,10 +98,23 @@ async function rankChunks(brainIds, query, k = TOP_K) {
   let scored;
   // Relevance floors: below these a "match" is just noise, so we treat the query
   // as NOT covered by the knowledge base (prevents e.g. "hi" grounding to a resume).
-  let threshold;
-  const semantic = embeddingsAvailable() && rows.some((r) => r.embedding);
-  if (semantic) {
-    const qVec = await embedOne(query);
+  let threshold = MIN_KEYWORD_SCORE;
+
+  // Try semantic search, but NEVER let an embeddings failure break the chat:
+  // if embedding the query throws (bad key, rate limit, API down), fall back to
+  // keyword search for this request instead of erroring out.
+  let qVec = null;
+  const wantSemantic = embeddingsAvailable() && rows.some((r) => r.embedding);
+  if (wantSemantic) {
+    try {
+      qVec = await embedOne(query);
+    } catch (err) {
+      console.error("query embedding failed — falling back to keyword search:", err.message);
+      qVec = null;
+    }
+  }
+
+  if (qVec) {
     threshold = MIN_SEMANTIC_SCORE;
     scored = rows.map((r) => ({
       content: r.content,

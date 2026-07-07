@@ -15,7 +15,6 @@ const geminiKey = () => process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY
 const openaiKey = () => process.env.OPENAI_API_KEY;
 
 const GEMINI_MODEL = "gemini-embedding-001";
-const GEMINI_DIMS = 768; // gemini-embedding-001 defaults to 3072; 768 is ample + lean
 const OPENAI_MODEL = "text-embedding-3-small";
 
 export function embeddingsProvider() {
@@ -69,12 +68,14 @@ async function embedGemini(texts, taskType) {
   const out = [];
   for (let i = 0; i < texts.length; i += BATCH) {
     const slice = texts.slice(i, i + BATCH);
+    // Note: we intentionally do NOT send outputDimensionality — some API
+    // versions reject it on batchEmbedContents. Default dimensions are fine;
+    // cosine similarity is dimension-agnostic as long as query + docs match.
     const data = await geminiRequest("batchEmbedContents", {
       requests: slice.map((t) => ({
         model: `models/${GEMINI_MODEL}`,
         content: { parts: [{ text: t }] },
         taskType: gTask,
-        outputDimensionality: GEMINI_DIMS,
       })),
     });
     for (const e of data.embeddings) out.push(e.values);

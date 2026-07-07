@@ -79,23 +79,33 @@ router.post("/conversations/:id/messages", async (req, res) => {
     );
 
     // ---- RAG retrieval -----------------------------------------------------
+    // IMPORTANT: retrieval must never break the reply. If anything here fails
+    // (embeddings API down, DB hiccup, etc.) we log it and answer without a brain
+    // rather than returning an error. This is why "No Brain" used to work but a
+    // Brain/Smart query could fail.
     let hits = [];
     let usedBrain = null; // { id, name, emoji }
-    if (routingMode !== "none") {
-      if (routingMode === "manual" && brainId) {
-        const brain = await get("SELECT * FROM brains WHERE id = ? AND (user_id = ? OR is_global = 1)", [brainId, req.userId]);
-        if (brain) {
-          hits = await retrieveForBrain(brain.id, content);
-          usedBrain = { id: brain.id, name: brain.name, emoji: brain.emoji };
-        }
-      } else {
-        const smart = await retrieveSmart(req.userId, content);
-        hits = smart.hits;
-        if (smart.brainId) {
-          const brain = await get("SELECT * FROM brains WHERE id = ?", [smart.brainId]);
-          if (brain) usedBrain = { id: brain.id, name: brain.name, emoji: brain.emoji };
+    try {
+      if (routingMode !== "none") {
+        if (routingMode === "manual" && brainId) {
+          const brain = await get("SELECT * FROM brains WHERE id = ? AND (user_id = ? OR is_global = 1)", [brainId, req.userId]);
+          if (brain) {
+            hits = await retrieveForBrain(brain.id, content);
+            usedBrain = { id: brain.id, name: brain.name, emoji: brain.emoji };
+          }
+        } else {
+          const smart = await retrieveSmart(req.userId, content);
+          hits = smart.hits;
+          if (smart.brainId) {
+            const brain = await get("SELECT * FROM brains WHERE id = ?", [smart.brainId]);
+            if (brain) usedBrain = { id: brain.id, name: brain.name, emoji: brain.emoji };
+          }
         }
       }
+    } catch (retrievalErr) {
+      console.error("retrieval failed — answering without a brain:", retrievalErr.message);
+      hits = [];
+      usedBrain = null;
     }
 
     // Conversation history in provider shape
