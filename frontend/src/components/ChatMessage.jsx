@@ -8,7 +8,7 @@ function clean(text) {
   return (text || "").replace(/<br\s*\/?>/gi, " ");
 }
 
-export default function ChatMessage({ role, content, brain, sources, web, id, onFeedback }) {
+export default function ChatMessage({ role, content, brain, sources, web, agent, actions, id, onFeedback }) {
   const isUser = role === "user";
   const [vote, setVote] = useState(null);
 
@@ -19,14 +19,19 @@ export default function ChatMessage({ role, content, brain, sources, web, id, on
   };
 
   const hasSources = !isUser && sources && sources.length > 0;
+  const ranActions = !isUser && Array.isArray(actions) && actions.length > 0;
+  const prettyTool = (t) => ({
+    send_email: "sent email", delete_file: "deleted file", list_files: "listed files",
+    web_search: "searched the web", search_knowledge: "searched your files", get_time: "checked the time",
+  }[t] || t);
 
   return (
     <div className={`msg-row ${isUser ? "msg-row--user" : "msg-row--assistant"}`}>
       <div className="msg-bubble">
         {!isUser && (
           <div className="msg-model-tag">
-            {brain ? `${brain.emoji || "🧠"} ${brain.name}` : "Alim AI"}
-            {!brain && <span className="tag-general"> · {web ? "web" : "general knowledge"}</span>}
+            {brain ? `${brain.emoji || "🧠"} ${brain.name}` : agent ? "⚡ Alim · assistant" : "Alim AI"}
+            {!brain && !agent && <span className="tag-general"> · {web ? "web" : "general knowledge"}</span>}
           </div>
         )}
 
@@ -35,6 +40,16 @@ export default function ChatMessage({ role, content, brain, sources, web, id, on
         ) : (
           <div className="msg-content md">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{clean(content)}</ReactMarkdown>
+          </div>
+        )}
+
+        {ranActions && (
+          <div className="msg-actions">
+            {actions.map((a, i) => (
+              <span className="action-chip" key={i} title={JSON.stringify(a.args || {})}>
+                ⚡ {prettyTool(a.tool)}
+              </span>
+            ))}
           </div>
         )}
 

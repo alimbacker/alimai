@@ -8,6 +8,7 @@ import BrainSelector from "../components/BrainSelector.jsx";
 import BrainManager from "../components/BrainManager.jsx";
 import ProfileMenu from "../components/ProfileMenu.jsx";
 import { applyAppearance } from "../lib/theme.js";
+import { speechSupported, startListening, speak, stopSpeaking } from "../lib/voice.js";
 
 export default function Chat({ onLogout }) {
   const [user, setUser] = useState(null);
@@ -27,6 +28,21 @@ export default function Chat({ onLogout }) {
 
   const [managerOpen, setManagerOpen] = useState(false);
   const [managerBrainId, setManagerBrainId] = useState(null);
+
+  // JARVIS-style assistant: agent tools + optional voice in/out.
+  const [assistantMode, setAssistantMode] = useState(
+    () => localStorage.getItem("assistantMode") === "1"
+  );
+  const [voiceOut, setVoiceOut] = useState(
+    () => localStorage.getItem("voiceOut") === "1"
+  );
+  const [listening, setListening] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
+  const stopListenRef = useRef(null);
+  const voiceSupported = speechSupported();
+
+  useEffect(() => { localStorage.setItem("assistantMode", assistantMode ? "1" : "0"); }, [assistantMode]);
+  useEffect(() => { localStorage.setItem("voiceOut", voiceOut ? "1" : "0"); }, [voiceOut]);
 
   const bottomRef = useRef(null);
   const taRef = useRef(null);
@@ -103,13 +119,43 @@ export default function Chat({ onLogout }) {
       const { reply } = await api.sendMessage(convoId, content, tier, {
         brainId: r.mode === "manual" ? r.brainId : undefined,
         routingMode: r.mode,
+        agent: assistantMode,
       });
       setMessages((prev) => [...prev, reply]);
+      if (voiceOut && reply?.content) {
+        setSpeaking(true);
+        speak(reply.content, { onEnd: () => setSpeaking(false) });
+      }
     } catch (err) {
       setError(err.message);
     } finally {
       setSending(false);
     }
+  }
+
+  // Push-to-talk: toggle the mic. On a final transcript, auto-send it.
+  function toggleMic() {
+    if (listening) {
+      stopListenRef.current?.();
+      setListening(false);
+      return;
+    }
+    stopSpeaking();
+    setSpeaking(false);
+    setError("");
+    setListening(true);
+    stopListenRef.current = startListening({
+      interim: true,
+      onResult: (text, isFinal) => {
+        setInput(text);
+        if (isFinal && text.trim()) {
+          setListening(false);
+          send(text);
+        }
+      },
+      onEnd: () => setListening(false),
+      onError: (msg) => { setError(msg); setListening(false); },
+    });
   }
 
   function onKeyDown(e) {
@@ -181,6 +227,8 @@ export default function Chat({ onLogout }) {
                 brain={m.brain}
                 sources={m.sources}
                 web={m.web}
+                agent={m.agent}
+                actions={m.actions}
                 onFeedback={handleFeedback}
               />
             ))}
@@ -196,15 +244,49 @@ export default function Chat({ onLogout }) {
 
         <div className="composer">
           <div className="composer-inner">
-            <BrainSelector brains={brains} value={routing} onChange={setRouting} />
+            <div className="assist-bar">
+              <button
+                className={`chip-toggle ${assistantMode ? "on" : ""}`}
+                onClick={() => setAssistantMode((v) => !v)}
+                title="Let Alim take real actions: send email, manage your files, search the web"
+              >
+                ⚡ Assistant
+              </button>
+              {voiceSupported && (
+                <button
+                  className={`chip-toggle ${voiceOut ? "on" : ""}`}
+                  onClick={() => { if (voiceOut) { stopSpeaking(); setSpeaking(false); } setVoiceOut((v) => !v); }}
+                  title="Read replies aloud"
+                >
+                  🔊 Voice
+                </button>
+              )}
+              {speaking && (
+                <button className="chip-toggle stop" onClick={() => { stopSpeaking(); setSpeaking(false); }}>
+                  ◼ Stop
+                </button>
+              )}
+              {!assistantMode && <BrainSelector brains={brains} value={routing} onChange={setRouting} />}
+              {assistantMode && <span className="assist-hint">Actions on · email, files &amp; web</span>}
+            </div>
             <div className="input-row">
+              {voiceSupported && (
+                <button
+                  className={`mic-btn ${listening ? "live" : ""}`}
+                  onClick={toggleMic}
+                  disabled={sending}
+                  title={listening ? "Stop listening" : "Speak"}
+                >
+                  🎤
+                </button>
+              )}
               <textarea
                 ref={taRef}
                 rows={1}
                 value={input}
                 onChange={(e) => { setInput(e.target.value); autoGrow(); }}
                 onKeyDown={onKeyDown}
-                placeholder="Message Alim AI…"
+                placeholder={listening ? "Listening…" : assistantMode ? "Ask Alim to do something…" : "Message Alim AI…"}
                 disabled={sending}
               />
               <button className="send-btn" onClick={() => send()} disabled={sending || !input.trim()} title="Send">

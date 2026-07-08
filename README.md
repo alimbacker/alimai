@@ -122,6 +122,34 @@ the model is always told **today's date** so it stops citing a stale "as of" yea
 Implementation: `services/webSearch.js` (provider + trigger heuristic + prompt);
 wired into `routes/chat.js` right after brain retrieval.
 
+## Assistant mode (JARVIS-style: voice + real actions)
+
+Toggle **⚡ Assistant** in the composer to let Alim *do things*, and **🔊 Voice**
+to have replies read aloud. Tap the 🎤 mic to talk instead of type (Chrome).
+
+What it can actually do (a browser app can't touch your phone's SMS, WhatsApp, or
+camera roll — so these act on things Alim really controls):
+
+- **Send email** — "email alex@work.com that I'll be 10 minutes late." Alim
+  confirms, then sends for real via Resend (`RESEND_API_KEY`).
+- **Manage your files** — "delete the beach photo" / "what files do I have?" It
+  lists and deletes documents/images stored in your Brains (real deletes).
+- **Search the web** and **search your own Brains** on demand.
+- **Check the time.**
+
+How it works: Assistant mode runs a small tool-using agent (`services/agent.js`
++ `services/tools.js`) on top of the existing model router, so it works with any
+provider. The model emits a JSON action, the server runs the tool, feeds back the
+result, and repeats until it answers. **Destructive actions (send/delete) are
+confirmed in plain language before they run.** Voice uses the browser's built-in
+Web Speech API — no extra services. Each reply shows chips for the actions it
+took (e.g. "⚡ sent email").
+
+To enable sending email, add `RESEND_API_KEY` (free at resend.com) and a
+`RESEND_FROM` sender. Without it, everything else still works and Alim just says
+email isn't set up. Adding new actions = one entry in `TOOLS` + a handler in
+`services/tools.js`.
+
 ## Google sign-in + redesigned login
 
 The **Login** and **Register** pages were redesigned (brand badge, welcome

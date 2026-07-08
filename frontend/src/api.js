@@ -39,10 +39,10 @@ export const api = {
       body: JSON.stringify({ title }) }).then(handle),
   getMessages: (id) =>
     fetch(`${BASE}/chat/conversations/${id}/messages`, { headers: authHeaders() }).then(handle),
-  sendMessage: (id, content, tier, { brainId, routingMode } = {}) =>
+  sendMessage: (id, content, tier, { brainId, routingMode, agent } = {}) =>
     fetch(`${BASE}/chat/conversations/${id}/messages`, {
       method: "POST", headers: jsonHeaders(),
-      body: JSON.stringify({ content, tier, brainId, routingMode }),
+      body: JSON.stringify({ content, tier, brainId, routingMode, agent }),
     }).then(handle),
 
   deleteConversation: (id) =>

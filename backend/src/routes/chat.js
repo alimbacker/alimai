@@ -7,6 +7,7 @@ import { resolveTier } from "../services/modelRegistry.js";
 import { retrieveForBrain, retrieveSmart, buildSystemPrompt, DEFAULT_SYSTEM_PROMPT } from "../services/rag.js";
 import { embeddingsAvailable } from "../services/embeddings.js";
 import { shouldWebSearch, webSearch, buildWebSearchPrompt } from "../services/webSearch.js";
+import { runAgent } from "../services/agent.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -57,8 +58,9 @@ router.get("/conversations/:id/messages", async (req, res) => {
 // Send a message. Body: { content, modelId, brainId?, routingMode? }
 //   routingMode: "smart" (search all brains) | "manual" (use brainId) | "none" (no RAG)
 router.post("/conversations/:id/messages", async (req, res) => {
-  const { content, tier, modelId, brainId, routingMode = "smart" } = req.body ?? {};
+  const { content, tier, modelId, brainId, routingMode = "smart", agent = false } = req.body ?? {};
   if (!content) return res.status(400).json({ error: "content is required" });
+  const agentMode = agent === true;
   // The client sends an effort tier (low/medium/high); modelId is legacy fallback.
   const resolvedModel = resolveTier(tier || modelId || "medium");
   if (!resolvedModel) {
@@ -87,7 +89,7 @@ router.post("/conversations/:id/messages", async (req, res) => {
     let hits = [];
     let usedBrain = null; // { id, name, emoji }
     try {
-      if (routingMode !== "none") {
+      if (!agentMode && routingMode !== "none") {
         if (routingMode === "manual" && brainId) {
           // Manual = the user explicitly pinned this brain. Answer from it; if
           // nothing relevant is found, buildSystemPrompt emits a clean "not in
@@ -126,7 +128,7 @@ router.post("/conversations/:id/messages", async (req, res) => {
     // so time-sensitive questions aren't answered from stale model memory.
     // Never breaks the reply — any failure just falls back to a normal answer.
     let webResults = [];
-    if (!usedBrain) {
+    if (!agentMode && !usedBrain) {
       try {
         if (shouldWebSearch(content)) {
           webResults = await webSearch(content, { maxResults: 5 });
@@ -149,18 +151,39 @@ router.post("/conversations/:id/messages", async (req, res) => {
     //   otherwise          -> concise general prompt, but still told today's date
     //                         so it stops answering "as of <training year>".
     const today = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
-    let systemContent;
-    if (usedBrain) {
-      systemContent = buildSystemPrompt(usedBrain.name, hits);
-    } else if (webResults.length) {
-      systemContent = buildWebSearchPrompt(webResults, today);
-    } else {
-      systemContent = `Today's date is ${today}. ` + DEFAULT_SYSTEM_PROMPT +
-        " If a question depends on current facts you can't be sure of (recent events, current officeholders, prices), say what you know and note it may be out of date rather than stating a stale fact as current.";
-    }
-    const providerMessages = [{ role: "system", content: systemContent }, ...history];
 
-    const { text, provider, model } = await routeMessage(resolvedModel, providerMessages);
+    let text, provider, model, agentActions = [];
+    if (agentMode) {
+      // Assistant mode: run the tool-using agent (email, files, web, etc.).
+      const me = await get("SELECT name FROM users WHERE id = ?", [req.userId]);
+      const result = await runAgent({
+        model: resolvedModel,
+        history,
+        userId: req.userId,
+        userName: me?.name,
+        today,
+      });
+      text = result.text;
+      provider = result.provider;
+      model = result.model;
+      agentActions = result.actions || [];
+    } else {
+      // Choose the system prompt. Never persisted as a chat message.
+      //   brain matched      -> grounded in the user's documents
+      //   web results found  -> grounded in current web results (with today's date)
+      //   otherwise          -> concise general prompt, but still told today's date.
+      let systemContent;
+      if (usedBrain) {
+        systemContent = buildSystemPrompt(usedBrain.name, hits);
+      } else if (webResults.length) {
+        systemContent = buildWebSearchPrompt(webResults, today);
+      } else {
+        systemContent = `Today's date is ${today}. ` + DEFAULT_SYSTEM_PROMPT +
+          " If a question depends on current facts you can't be sure of (recent events, current officeholders, prices), say what you know and note it may be out of date rather than stating a stale fact as current.";
+      }
+      const providerMessages = [{ role: "system", content: systemContent }, ...history];
+      ({ text, provider, model } = await routeMessage(resolvedModel, providerMessages));
+    }
 
     const assistantMsgId = uuidv4();
     await run(
@@ -173,7 +196,7 @@ router.post("/conversations/:id/messages", async (req, res) => {
     try {
       await run(
         "INSERT INTO retrieval_events (id, user_id, conversation_id, mode, semantic, hit_count, clarification, error, latency_ms) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)",
-        [uuidv4(), req.userId, req.params.id, routingMode, embeddingsAvailable() ? 1 : 0, hits.length, isClarification ? 1 : 0, Date.now() - startedAt]
+        [uuidv4(), req.userId, req.params.id, agentMode ? "agent" : routingMode, embeddingsAvailable() ? 1 : 0, hits.length, isClarification ? 1 : 0, Date.now() - startedAt]
       );
     } catch (e) { console.error("event log failed:", e.message); }
 
@@ -186,6 +209,8 @@ router.post("/conversations/:id/messages", async (req, res) => {
           ? hits.map((h) => h.title)
           : webResults.map((r) => r.title),
         web: !usedBrain && webResults.length > 0, // answered from live web results
+        agent: agentMode,                 // answered via the assistant/agent
+        actions: agentActions,            // [{ tool, args }] the agent actually ran
       },
     });
   } catch (err) {
