@@ -6,6 +6,7 @@ import { routeMessage } from "../services/modelRouter.js";
 import { resolveTier } from "../services/modelRegistry.js";
 import { retrieveForBrain, retrieveSmart, buildSystemPrompt, DEFAULT_SYSTEM_PROMPT } from "../services/rag.js";
 import { embeddingsAvailable } from "../services/embeddings.js";
+import { shouldWebSearch, webSearch, buildWebSearchPrompt } from "../services/webSearch.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -119,17 +120,44 @@ router.post("/conversations/:id/messages", async (req, res) => {
       usedBrain = null;
     }
 
+    // ---- Web search (fresh info for general answers) -----------------------
+    // Only when NOT grounded in a brain. Brain answers stay grounded in the
+    // user's own documents; general answers get augmented with live web results
+    // so time-sensitive questions aren't answered from stale model memory.
+    // Never breaks the reply — any failure just falls back to a normal answer.
+    let webResults = [];
+    if (!usedBrain) {
+      try {
+        if (shouldWebSearch(content)) {
+          webResults = await webSearch(content, { maxResults: 5 });
+        }
+      } catch (webErr) {
+        console.error("web search step failed — answering without it:", webErr.message);
+        webResults = [];
+      }
+    }
+
     // Conversation history in provider shape
     const history = await all(
       "SELECT role, content FROM messages WHERE conversation_id = ? ORDER BY created_at ASC",
       [req.params.id]
     );
 
-    // Always prepend a system message: grounded (KB) when a brain matched, else a
-    // concise-general prompt. Never persisted as a chat message.
-    const systemContent = usedBrain
-      ? buildSystemPrompt(usedBrain.name, hits)
-      : DEFAULT_SYSTEM_PROMPT;
+    // Choose the system prompt. Never persisted as a chat message.
+    //   brain matched      -> grounded in the user's documents
+    //   web results found  -> grounded in current web results (with today's date)
+    //   otherwise          -> concise general prompt, but still told today's date
+    //                         so it stops answering "as of <training year>".
+    const today = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+    let systemContent;
+    if (usedBrain) {
+      systemContent = buildSystemPrompt(usedBrain.name, hits);
+    } else if (webResults.length) {
+      systemContent = buildWebSearchPrompt(webResults, today);
+    } else {
+      systemContent = `Today's date is ${today}. ` + DEFAULT_SYSTEM_PROMPT +
+        " If a question depends on current facts you can't be sure of (recent events, current officeholders, prices), say what you know and note it may be out of date rather than stating a stale fact as current.";
+    }
     const providerMessages = [{ role: "system", content: systemContent }, ...history];
 
     const { text, provider, model } = await routeMessage(resolvedModel, providerMessages);
@@ -153,7 +181,11 @@ router.post("/conversations/:id/messages", async (req, res) => {
       reply: {
         id: assistantMsgId, role: "assistant", content: text, provider, model,
         brain: usedBrain,                 // which brain answered (or null)
-        sources: hits.map((h) => h.title), // source doc titles used
+        // Brain sources when grounded in a brain, else the web pages used (if any).
+        sources: usedBrain
+          ? hits.map((h) => h.title)
+          : webResults.map((r) => r.title),
+        web: !usedBrain && webResults.length > 0, // answered from live web results
       },
     });
   } catch (err) {

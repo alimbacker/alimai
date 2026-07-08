@@ -97,6 +97,53 @@ This version was reworked to actually run on Vercel's serverless platform:
 - **Hardened for production:** clear errors for missing `JWT_SECRET`/DB config, and route
   handlers no longer crash the function on a bad request or upstream error.
 
+## Fix: Up-to-date answers (live web search)
+
+Symptom: general questions were answered from the model's training data, so
+time-sensitive ones came out stale — e.g. "who is the CM of Tamil Nadu" replied
+"as of mid-2024…" with a since-passed election framed as upcoming.
+
+Fix: general (non-Brain) answers can now be grounded in **live web results**, and
+the model is always told **today's date** so it stops citing a stale "as of" year.
+
+- **Only the general path searches.** Brain-grounded answers stay grounded in
+  *your* documents. When Smart doesn't match a brain (or you're in No Brain mode),
+  Alim runs a web search, prepends the results as context, and answers from them
+  with inline source links. Answers grounded this way are tagged **· web** and
+  list their sources.
+- **Set one key to enable it:** `TAVILY_API_KEY` (recommended — free tier,
+  https://tavily.com) or `BRAVE_API_KEY`. Without either, Alim still answers from
+  model memory, but now with today's date injected so the framing isn't stale.
+- **When it searches:** `WEB_SEARCH_MODE=auto` (default) searches on factual
+  questions and skips greetings / creative-or-code tasks; `always` searches every
+  general message; `off` disables it. It never blocks a reply — if search fails or
+  is unconfigured, the answer proceeds without it.
+
+Implementation: `services/webSearch.js` (provider + trigger heuristic + prompt);
+wired into `routes/chat.js` right after brain retrieval.
+
+## Google sign-in + redesigned login
+
+The **Login** and **Register** pages were redesigned (brand badge, welcome
+header, "Continue with Google", email/password, and quick links) and now support
+**Sign in with Google**.
+
+**Enable it (optional):** create an OAuth 2.0 **Web** Client ID at
+https://console.cloud.google.com/apis/credentials, add your origins to
+*Authorized JavaScript origins* (your domain + `http://localhost:5173` for dev),
+then set the **same** client ID in both:
+
+- `GOOGLE_CLIENT_ID` — server; verifies the Google ID token.
+- `VITE_GOOGLE_CLIENT_ID` — frontend **build-time** var (Vite inlines it), renders
+  the button. On Vercel, add it as an Environment Variable before deploying.
+
+How it works: the frontend uses Google Identity Services to get an ID token,
+`POST /api/auth/google` verifies it with Google (checks the audience + verified
+email), then finds-or-creates the user and issues the normal app JWT. An existing
+email/password account with the same email is **linked** rather than duplicated.
+Without the keys the app is unchanged — email + password still works, and the
+Google button shows a short "set me up" note.
+
 ## Brains (RAG — chat with your own data)
 
 A **Brain** is a named knowledge base built from documents you paste or upload.

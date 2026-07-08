@@ -22,6 +22,10 @@ export const api = {
     fetch(`${BASE}/auth/login`, { method: "POST", headers: jsonHeaders(),
       body: JSON.stringify({ email, password }) }).then(handle),
 
+  googleAuth: (credential) =>
+    fetch(`${BASE}/auth/google`, { method: "POST", headers: jsonHeaders(),
+      body: JSON.stringify({ credential }) }).then(handle),
+
   me: () => fetch(`${BASE}/auth/me`, { headers: authHeaders() }).then(handle),
 
   // --- models ---

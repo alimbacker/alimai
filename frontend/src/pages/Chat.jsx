@@ -180,6 +180,7 @@ export default function Chat({ onLogout }) {
                 model={m.model}
                 brain={m.brain}
                 sources={m.sources}
+                web={m.web}
                 onFeedback={handleFeedback}
               />
             ))}

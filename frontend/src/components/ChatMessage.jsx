@@ -8,7 +8,7 @@ function clean(text) {
   return (text || "").replace(/<br\s*\/?>/gi, " ");
 }
 
-export default function ChatMessage({ role, content, brain, sources, id, onFeedback }) {
+export default function ChatMessage({ role, content, brain, sources, web, id, onFeedback }) {
   const isUser = role === "user";
   const [vote, setVote] = useState(null);
 
@@ -26,7 +26,7 @@ export default function ChatMessage({ role, content, brain, sources, id, onFeedb
         {!isUser && (
           <div className="msg-model-tag">
             {brain ? `${brain.emoji || "🧠"} ${brain.name}` : "Alim AI"}
-            {!brain && <span className="tag-general"> · general knowledge</span>}
+            {!brain && <span className="tag-general"> · {web ? "web" : "general knowledge"}</span>}
           </div>
         )}
 
