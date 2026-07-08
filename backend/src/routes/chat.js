@@ -88,17 +88,28 @@ router.post("/conversations/:id/messages", async (req, res) => {
     try {
       if (routingMode !== "none") {
         if (routingMode === "manual" && brainId) {
+          // Manual = the user explicitly pinned this brain. Answer from it; if
+          // nothing relevant is found, buildSystemPrompt emits a clean "not in
+          // this knowledge base" reply (that's the point of pinning).
           const brain = await get("SELECT * FROM brains WHERE id = ? AND (user_id = ? OR is_global = 1)", [brainId, req.userId]);
           if (brain) {
-            hits = await retrieveForBrain(brain.id, content);
+            const r = await retrieveForBrain(brain.id, content);
+            hits = r.hits;
             usedBrain = { id: brain.id, name: brain.name, emoji: brain.emoji };
           }
         } else {
+          // Smart = auto-route. Only ground to a brain when the match is
+          // confident (retrieveSmart applies the route gate). Otherwise leave
+          // usedBrain null so we answer from general knowledge instead of
+          // refusing — no more "I don't have that in my knowledge base" for
+          // questions a brain doesn't actually cover.
           const smart = await retrieveSmart(req.userId, content);
-          hits = smart.hits;
-          if (smart.brainId) {
+          if (smart.grounded && smart.brainId) {
             const brain = await get("SELECT * FROM brains WHERE id = ?", [smart.brainId]);
-            if (brain) usedBrain = { id: brain.id, name: brain.name, emoji: brain.emoji };
+            if (brain) {
+              hits = smart.hits;
+              usedBrain = { id: brain.id, name: brain.name, emoji: brain.emoji };
+            }
           }
         }
       }
